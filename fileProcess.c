@@ -37,8 +37,6 @@ keep the same arguments as defined by the prototype fileProcess()
 #include "pwalk.h"
 
 /* conditioanally change file ownership --chown_from --chown_to */
-extern uid_t UID_orig, UID_new;
-extern gid_t GID_new;
 extern int chown_flag;
 
 /* Escape CSV delimeters */
@@ -91,12 +89,14 @@ changeOwner( struct threadData *cur, char *exten, struct stat *f,
 /*
  *  printStat this needs to be in a crital secion  (and it is!)
  */
+#define MAX_OUTPUT_SIZE 16384
+
 void
 printStat( struct threadData *cur, char *exten, struct stat *f, 
         long fileCnt, /* directory only - count files in directory */
         long dirSz )  /* directory only - sum of files within directory */
 {
-   char out[FILENAME_MAX+FILENAME_MAX];
+   char out[MAX_OUTPUT_SIZE];
    char fname[FILENAME_MAX];
    char exten_csv[FILENAME_MAX];
    ino_t ino, pino;
@@ -111,7 +111,7 @@ printStat( struct threadData *cur, char *exten, struct stat *f,
       ino = f->st_ino; pino = cur->pinode; depth = cur->depth - 1;}
    else {  /* Not a directory */
       ino = f->st_ino; pino = cur->pstat.st_ino; depth = cur->depth; }
-   sprintf ( out, "%ju,%ju,%ld,\"%s\",\"%s\",%ld,%ld,%ld,%ld,%ld,%d,\"%07o\",%ld,%ld,%ld,%ld,%ld\n",
+   snprintf( out, MAX_OUTPUT_SIZE, "%ju,%ju,%ld,\"%s\",\"%s\",%ld,%ld,%ld,%ld,%ld,%d,\"%07o\",%ld,%ld,%ld,%ld,%ld\n",
             (uintmax_t)ino, (uintmax_t)pino, depth,
             fname, exten_csv, (long)f->st_uid,
             (long)f->st_gid, (long)f->st_size, (long)f->st_dev,

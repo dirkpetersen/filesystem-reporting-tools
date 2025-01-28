@@ -29,6 +29,7 @@ along with this program; If not, see <https://www.gnu.org/licenses/>.
 #include <unistd.h>
 #include <fcntl.h>
 #include <utime.h>
+#include "pwalk.h"
 
 /*  
 ppurge  Parallel Purge
@@ -90,14 +91,20 @@ static char *Version = "0.1.0 Aug 14 2023 John F Dey john@fuzzdog.com";
 
 #define DEBUG 2  // [0, 1, 2]
 
-#if defined(DEBUG) && DEBUG == 1
- #define DEBUG_1(fmt, args...) fprintf(stderr, "DEBUG: %s(): " fmt, __func__, ##args)
-#elif defined(DEBUG) && DEBUG == 2
- #define DEBUG_1(fmt, args...) fprintf(stderr, "DEBUG: %s(): " fmt, __func__, ##args)
- #define DEBUG_2(fmt, args...) fprintf(stderr, "DEBUG: %s(): " fmt, __func__, ##args)
+#if defined(DEBUG)
+ #if DEBUG >= 1
+  #define DEBUG_1(fmt, ...) fprintf(stderr, "DEBUG: %s(): " fmt, __func__, ##__VA_ARGS__)
+ #else
+  #define DEBUG_1(fmt, ...) /* Don't do anything in release builds */
+ #endif
+ #if DEBUG >= 2
+  #define DEBUG_2(fmt, ...) fprintf(stderr, "DEBUG: %s(): " fmt, __func__, ##__VA_ARGS__)
+ #else
+  #define DEBUG_2(fmt, ...) /* Don't do anything in release builds */
+ #endif
 #else
- #define DEBUG_1(fmt, args...) /* Don't do anything in release builds */
- #define DEBUG_2(fmt, args...) /* Don't do anything in release builds */
+ #define DEBUG_1(fmt, ...) /* Don't do anything in release builds */
+ #define DEBUG_2(fmt, ...) /* Don't do anything in release builds */
 #endif
 
 FILE *Logfd;   /* error log */
@@ -105,15 +112,10 @@ time_t Ptime;  /* Purge all files older than this time stamp (less than)*/
 time_t Rtime;  /* Remove all files older than this time stamp (Ptime * 2) */
 int DEPTH = 0; /* possible furture use for directory purging */
 
-struct threadData {
-    char dname[FILENAME_MAX+1]; /* full path and basename */
-    int dirfd;                  /* file pointer to directory*/
-    long depth;                 /* directory depth */
-    long THRDid;                /* unique ID increaments with each new THRD */
-    int  flag;                  /* 0 if thread; recursion > 0 */
-    pthread_t thread_id;        /* system assigned */
-    pthread_attr_t tattr;
-};
+/* Global variables */
+char *exclude_list[512];
+uid_t UID_orig, UID_new;
+gid_t GID_new;
 
 #define MAXTHRDS 32
 int ThreadCNT  = 1; /* ThreadCNT < MAXTHRDS */
@@ -143,26 +145,6 @@ printHelp()
 }
 
 /* Escape CSV delimeters */
-void
-csv_escape(char *in, char *out)
-{
-   char *orig;
-   int cnt = 0;
-
-   orig = in;
-   while ( *in ) {
-      if ( *in == '"' )
-          *out++ = '"';
-      if ( (unsigned char)*in < 32 ) {
-          in++;
-          cnt++;
-      } else
-          *out++ = *in++;
-   *out = '\0';
-   }
-   if ( cnt )
-       fprintf( Logfd, "Bad File Name: %s\n", orig);
-}
 
 /*
  *  purgeLog
